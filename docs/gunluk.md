@@ -122,3 +122,34 @@
 - İlk modül: ArsaCizici (autolay/mimari/arsa.py)
 - ArsaCizici, AutoCADConnector + GeometryDrawer + LayerManager + GeometryUtils'i birleştirip kullanacak
 - Kullanıcıdan köşe koordinatları alacak, AUTOLAY_ARSA katmanında poligon çizecek, alan hesaplayacak
+
+## 20 Nisan 2026
+
+### Yapılanlar
+- autolay/mimari/veriler.py — MimariVeriler sınıfı (213 satır)
+  - Merkezi veri taşıyıcı: arsa_koseleri, yapi_nizami, kat_sayisi, on_kenar_indeks, park_komsusu_kenarlar, bitisik_kenarlar, imar_durumu, bina_yuksekligi_m
+  - 8 adım validation
+  - cekme_baslangic_mesafeleri() metodu (ön/yan/arka/bitişik mantığı)
+  - ozet() metodu (log için)
+- CekmeCizici.verilerden_hesapla(veri) entegrasyonu
+  - MimariVeriler'den otomatik okuma
+  - Nizam kontrolü → bitisik_nizam_ayarla veya tum_kenarlar_ayarla
+  - Kademeli çekme otomatik (kat > 4)
+  - Yüksek yapı uyarısı otomatik (bina_yuksekligi >= 60.50m)
+- kademeli_cekme_hesapla metoduna bitisik_kenarlar parametresi eklendi (bug fix)
+
+### Testler (18 test geçti)
+- tests/test_veriler.py — 13 validation ve mantık testi
+- tests/test_cekme.py'ye test_verilerden_hesapla eklendi — 5 entegrasyon testi
+
+### Bug Fix
+- Bitişik kenara kademeli ekleme yapılıyordu (0 olması gerekirken 1.5m çıkıyordu)
+- kademeli_cekme_hesapla artık bitisik_kenarlar'ı da atlıyor
+
+### Sonraki Adım (21 Nisan)
+- İmarHesap sınıfı (autolay/mimari/imar_hesap.py)
+  - TAKS hesabı (taban alanı katsayısı)
+  - KAKS/Emsal hesabı (kat alanı katsayısı)
+  - Maksimum inşaat alanı
+  - Emsal harici alan takibi (balkon, çıkma, çatı arası)
+- MimariVeriler'e taks, kaks, emsal_harici gibi alanlar eklenecek
