@@ -92,3 +92,33 @@
 **Sonraki Adım:** autolay/utils/geometri.py (GeometryUtils) — mesafe, alan, poligon offset, merkez, nokta içinde mi.
 
 **Sonra:** autolay/mimari/ klasörü ile ArsaCizici.
+
+## 18 Nisan 2026 - Gece - Git & GitHub Kurulumu
+
+- Git bilgisayara kuruldu (zaten varmış, 2.53.0)
+- GitHub hesabı açıldı: elifecemercan
+- Proje klasörü Git deposuna dönüştürüldü (git init)
+- .gitignore dosyası oluşturuldu (venv, pycache, logs, .vscode dışta)
+- İlk commit: "İlk sürüm: AutoLay altyapısı tamamlandı" (41 dosya, 2384 satır)
+- Temizlik commit: pycache ve log dosyaları Git takibinden çıkarıldı
+- GitHub'da depo oluşturuldu (private): https://github.com/elifecemercan/autolay
+- Tüm kod GitHub'a yüklendi (git push)
+
+### Sonraki Seans Kullanımı
+- Her seans sonu: git add . && git commit -m "..." && git push
+- Yeni bilgisayardan çalışmak için: git clone https://github.com/elifecemercan/autolay
+- Yerel yedek: C:\Projeler\Autolay_Yedek_18Nisan (manuel kopya)
+
+## 18 Nisan 2026 - Gece - GeometryUtils Tamamlandı
+
+- autolay/utils/geometri.py — GeometryUtils sınıfı yazıldı
+- 5 metot: mesafe, poligon_alani (Shoelace), poligon_merkezi, nokta_poligon_icinde_mi (Ray Casting), poligon_offset (köşe açıortay yöntemi)
+- poligon_offset'te CW/CCW yön tespiti eklendi: pozitif mesafe her zaman içeri, negatif her zaman dışarı
+- tests/test_geometri.py — 10/10 test başarılı
+- ALTYAPI %100 TAMAMLANDI
+
+### Yarın Başlanacak
+- autolay/mimari/ klasörü açılacak
+- İlk modül: ArsaCizici (autolay/mimari/arsa.py)
+- ArsaCizici, AutoCADConnector + GeometryDrawer + LayerManager + GeometryUtils'i birleştirip kullanacak
+- Kullanıcıdan köşe koordinatları alacak, AUTOLAY_ARSA katmanında poligon çizecek, alan hesaplayacak
