@@ -93,5 +93,255 @@ def test_cekme():
     print("Test tamamlandı.")
 
 
+def test_cekme_kenar_bazli():
+    utf8_aktif_et()
+
+    print("="*50)
+    print("CekmeCizici Kenar Bazlı Test")
+    print("="*50)
+
+    connector = AutoCADConnector()
+    try:
+        connector.baglan()
+    except Exception as e:
+        print(f"AutoCAD bağlantısı başarısız: {e}")
+        return
+
+    # Önce arsa çiz
+    arsa = ArsaCizici(connector)
+    arsa_koseleri = [(50, 0), (75, 0), (75, 20), (50, 20)]  # Farklı konumda 25x20 arsa
+    arsa.koseleri_ayarla(arsa_koseleri)
+    arsa.ciz()
+
+    # Kenar bazlı çekme
+    cekme = CekmeCizici(connector)
+    cekme.arsa_koseleri_ayarla(arsa_koseleri)
+
+    # Mesafeler:
+    # Kenar 0: alt (ön bahçe) = 5m
+    # Kenar 1: sağ (yan) = 3m
+    # Kenar 2: üst (arka) = 3m
+    # Kenar 3: sol (yan) = 3m
+    cekme.tum_kenarlar_ayarla([5, 3, 3, 3])
+    cekme.ciz()
+
+    print(f"Çekme köşeleri: {cekme.cekme_koseleri()}")
+    # Beklenen: (53, 5), (72, 5), (72, 17), (53, 17)
+    # 19 geniş, 12 derin = 228 m²
+
+    connector.acad.ZoomExtents()
+    print("Test tamamlandı.")
+
+
+def test_kademeli_cekme():
+    utf8_aktif_et()
+
+    print("="*50)
+    print("Kademeli Çekme Testi (AutoCAD'siz)")
+    print("="*50)
+
+    connector = AutoCADConnector()
+    try:
+        connector.baglan()
+    except Exception:
+        # Bağlantı olmasa bile kademeli hesap saf matematik
+        # Sadece kenar_mesafeleri listesini manipüle ediyor
+        print("AutoCAD bağlantısı yok, yine de saf matematik testine devam...")
+
+    cekme = CekmeCizici(connector)
+    cekme.arsa_koseleri_ayarla([(0,0),(25,0),(25,20),(0,20)])
+
+    # TEST 1: 4 kat veya az → değişiklik yok
+    cekme.tum_kenarlar_ayarla([5, 3, 3, 3])
+    cekme.kademeli_cekme_hesapla(kat_sayisi=4, on_kenar_indeks=0)
+    beklenen = [5, 3, 3, 3]
+    sonuc = cekme.kenar_mesafeleri
+    print(f"Test 1 (4 kat): {sonuc} {'✓' if sonuc == beklenen else '✗ beklenen ' + str(beklenen)}")
+
+    # TEST 2: 7 kat → 3 ekstra kat × 0.5 = +1.5m yan/arka
+    cekme.tum_kenarlar_ayarla([5, 3, 3, 3])
+    cekme.kademeli_cekme_hesapla(kat_sayisi=7, on_kenar_indeks=0)
+    beklenen = [5, 4.5, 4.5, 4.5]  # ön değişmez, diğerleri +1.5
+    sonuc = cekme.kenar_mesafeleri
+    print(f"Test 2 (7 kat, parksız): {sonuc} {'✓' if sonuc == beklenen else '✗ beklenen ' + str(beklenen)}")
+
+    # TEST 3: 7 kat + kenar 2 park komşusu
+    cekme.tum_kenarlar_ayarla([5, 3, 3, 3])
+    cekme.kademeli_cekme_hesapla(kat_sayisi=7, on_kenar_indeks=0, park_komsusu_kenarlar=[2])
+    beklenen = [5, 4.5, 3, 4.5]  # ön değişmez, kenar 2 park → değişmez
+    sonuc = cekme.kenar_mesafeleri
+    print(f"Test 3 (7 kat, park=[2]): {sonuc} {'✓' if sonuc == beklenen else '✗ beklenen ' + str(beklenen)}")
+
+    # TEST 4: 10 kat → 6 ekstra kat × 0.5 = +3m
+    cekme.tum_kenarlar_ayarla([5, 3, 3, 3])
+    cekme.kademeli_cekme_hesapla(kat_sayisi=10, on_kenar_indeks=0)
+    beklenen = [5, 6, 6, 6]
+    sonuc = cekme.kenar_mesafeleri
+    print(f"Test 4 (10 kat): {sonuc} {'✓' if sonuc == beklenen else '✗ beklenen ' + str(beklenen)}")
+
+    # TEST 5: Geçersiz parametreler
+    try:
+        cekme.kademeli_cekme_hesapla(kat_sayisi=-1, on_kenar_indeks=0)
+        print("Test 5: ✗ (negatif kat hata fırlatmadı)")
+    except ValueError:
+        print("Test 5: Negatif kat → ValueError ✓")
+
+    print("="*50)
+
+
+def test_bitisik_nizam():
+    utf8_aktif_et()
+    print("="*50)
+    print("Bitişik Nizam Testi")
+    print("="*50)
+
+    connector = AutoCADConnector()
+    try:
+        connector.baglan()
+    except Exception as e:
+        print(f"AutoCAD bağlantısı başarısız: {e}")
+        return
+
+    # TEST 1: Tek taraflı bitişik (sağ yan komşuya yapışık)
+    # 25x20 arsa, x=100'den başlasın
+    arsa_koseleri = [(100, 0), (125, 0), (125, 20), (100, 20)]
+
+    arsa = ArsaCizici(connector)
+    arsa.koseleri_ayarla(arsa_koseleri)
+    arsa.ciz()
+
+    cekme = CekmeCizici(connector)
+    cekme.arsa_koseleri_ayarla(arsa_koseleri)
+
+    # Kenar 0: alt (ön) = 5m
+    # Kenar 1: sağ (bitişik) = 0
+    # Kenar 2: üst (arka) = 3m
+    # Kenar 3: sol (yan) = 3m
+    cekme.bitisik_nizam_ayarla(
+        bitisik_kenarlar=[1],
+        diger_mesafeler={0: 5, 2: 3, 3: 3}
+    )
+    cekme.ciz()
+
+    print(f"Kenar mesafeleri: {cekme.kenar_mesafeleri}")
+    # Beklenen: [5, 0, 3, 3]
+    print(f"Çekme köşeleri: {cekme.cekme_koseleri()}")
+    # Beklenen: (103, 5), (125, 5), (125, 17), (103, 17)
+    # Genişlik: 125-103 = 22 (sağa bitişik, soldan 3m çekildi)
+    # Yükseklik: 17-5 = 12 (ön 5, arka 3)
+    # Alan: 22 * 12 = 264 m²
+
+    # TEST 2: İki taraflı bitişik (her iki yan komşuya yapışık)
+    arsa2_koseleri = [(150, 0), (175, 0), (175, 20), (150, 20)]
+
+    arsa2 = ArsaCizici(connector)
+    arsa2.koseleri_ayarla(arsa2_koseleri)
+    arsa2.ciz()
+
+    cekme2 = CekmeCizici(connector)
+    cekme2.arsa_koseleri_ayarla(arsa2_koseleri)
+    cekme2.bitisik_nizam_ayarla(
+        bitisik_kenarlar=[1, 3],  # Her iki yan komşu
+        diger_mesafeler={0: 5, 2: 3}
+    )
+    cekme2.ciz()
+
+    print(f"\n2. Arsa (iki taraflı bitişik):")
+    print(f"Kenar mesafeleri: {cekme2.kenar_mesafeleri}")
+    # Beklenen: [5, 0, 3, 0]
+    print(f"Çekme köşeleri: {cekme2.cekme_koseleri()}")
+    # Beklenen: (150, 5), (175, 5), (175, 17), (150, 17)
+    # Genişlik: tam 25m (iki yan bitişik)
+    # Yükseklik: 12m
+    # Alan: 300 m²
+
+    connector.acad.ZoomExtents()
+    print("="*50)
+
+
+def test_dar_aci_uyarisi():
+    import io
+    import logging
+    utf8_aktif_et()
+
+    print("="*50)
+    print("Dar Açı ve Kısa Kenar Uyarı Testi")
+    print("="*50)
+
+    # Log mesajlarını yakalamak için özel handler
+    log_buffer = io.StringIO()
+    handler = logging.StreamHandler(log_buffer)
+    handler.setLevel(logging.WARNING)
+    logger = logging.getLogger('autolay.mimari.cekme')
+    logger.addHandler(handler)
+
+    connector = AutoCADConnector()
+    try:
+        connector.baglan()
+    except Exception:
+        print("AutoCAD yok, yine de geometri uyarıları test edilir.")
+
+    # TEST 1: Normal arsa — UYARI OLMAMALI
+    print("\n--- Test 1: Normal 25x20 arsa ---")
+    log_buffer.truncate(0)
+    log_buffer.seek(0)
+    cekme = CekmeCizici(connector)
+    cekme.arsa_koseleri_ayarla([(0,0),(25,0),(25,20),(0,20)])
+    cekme.tum_kenarlar_ayarla([3, 3, 3, 3])
+    cekme._geometri_uyarilari()
+    uyari = log_buffer.getvalue()
+    print(f"Uyarı sayısı: {uyari.count('⚠')}")
+    print(f"Test 1 {'✓' if uyari.count('⚠') == 0 else '✗ (uyarı çıkmamalıydı)'}")
+
+    # TEST 2: Çok dar açılı üçgen arsa — UYARI OLMALI
+    print("\n--- Test 2: İnce üçgen arsa ---")
+    log_buffer.truncate(0)
+    log_buffer.seek(0)
+    cekme2 = CekmeCizici(connector)
+    # Çok uzun dar üçgen: bir köşe 15° olmalı
+    cekme2.arsa_koseleri_ayarla([(0,0),(50,0),(25,3)])
+    cekme2.tum_kenarlar_ayarla([1, 1, 1])
+    cekme2._geometri_uyarilari()
+    uyari = log_buffer.getvalue()
+    print(f"Uyarı mesajları:\n{uyari}")
+    print(f"Test 2 {'✓ (dar açı yakalandı)' if '⚠ Köşe' in uyari else '✗'}")
+
+    # TEST 3: Kısa kenar — UYARI OLMALI
+    print("\n--- Test 3: Küçük arsa, büyük çekme ---")
+    log_buffer.truncate(0)
+    log_buffer.seek(0)
+    cekme3 = CekmeCizici(connector)
+    # 5x5 arsa, 3m çekme — kenar 5m, 3*2=6m, kenar <= 6 → uyarı
+    cekme3.arsa_koseleri_ayarla([(0,0),(5,0),(5,5),(0,5)])
+    cekme3.tum_kenarlar_ayarla([3, 3, 3, 3])
+    cekme3._geometri_uyarilari()
+    uyari = log_buffer.getvalue()
+    print(f"Uyarı mesajları:\n{uyari}")
+    print(f"Test 3 {'✓ (kısa kenar yakalandı)' if '⚠ Kenar' in uyari else '✗'}")
+
+    # TEST 4: Hem kısa kenar hem dar açı
+    print("\n--- Test 4: Zorlayıcı arsa (ince uzun üçgen, büyük çekme) ---")
+    log_buffer.truncate(0)
+    log_buffer.seek(0)
+    cekme4 = CekmeCizici(connector)
+    cekme4.arsa_koseleri_ayarla([(0,0),(20,0),(10,1)])  # çok yassı üçgen
+    cekme4.tum_kenarlar_ayarla([3, 3, 3])
+    cekme4._geometri_uyarilari()
+    uyari = log_buffer.getvalue()
+    print(f"Uyarı mesajları:\n{uyari}")
+    kose_uyari = uyari.count('⚠ Köşe')
+    kenar_uyari = uyari.count('⚠ Kenar')
+    print(f"Köşe uyarıları: {kose_uyari}, Kenar uyarıları: {kenar_uyari}")
+    print(f"Test 4 {'✓' if (kose_uyari > 0 or kenar_uyari > 0) else '✗'}")
+
+    # Handler temizle
+    logger.removeHandler(handler)
+    print("="*50)
+
+
 if __name__ == "__main__":
     test_cekme()
+    test_cekme_kenar_bazli()
+    test_kademeli_cekme()
+    test_bitisik_nizam()
+    test_dar_aci_uyarisi()

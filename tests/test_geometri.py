@@ -95,5 +95,89 @@ def test_geometri():
     print("Test tamamlandı.")
 
 
+def test_kenar_bazli_offset():
+    gu = GeometryUtils()
+
+    print("="*50)
+    print("Kenar Bazlı Offset Testleri")
+    print("="*50)
+
+    # TEST 1: 10x10 kare, tüm kenarlar eşit 2m
+    # Beklenen: 6x6 kare, köşeler (2,2), (8,2), (8,8), (2,8)
+    sonuc = gu.poligon_offset_kenar_bazli(
+        [(0,0),(10,0),(10,10),(0,10)],
+        [2, 2, 2, 2]
+    )
+    beklenen = [(2,2),(8,2),(8,8),(2,8)]
+    tum_dogru = all(
+        abs(sonuc[i][0]-beklenen[i][0])<0.01 and abs(sonuc[i][1]-beklenen[i][1])<0.01
+        for i in range(4)
+    )
+    print(f"Test 1 - Eşit 2m: {'✓' if tum_dogru else '✗'}")
+    print(f"  Sonuç: {sonuc}")
+
+    # TEST 2: 12x10 dikdörtgen, mesafeler [3,2,3,2]
+    # Beklenen: 8x4 dikdörtgen merkezi, köşeler (2,3), (10,3), (10,7), (2,7)
+    sonuc = gu.poligon_offset_kenar_bazli(
+        [(0,0),(12,0),(12,10),(0,10)],
+        [3, 2, 3, 2]
+    )
+    beklenen = [(2,3),(10,3),(10,7),(2,7)]
+    tum_dogru = all(
+        abs(sonuc[i][0]-beklenen[i][0])<0.01 and abs(sonuc[i][1]-beklenen[i][1])<0.01
+        for i in range(4)
+    )
+    print(f"Test 2 - Farklı mesafeler [3,2,3,2]: {'✓' if tum_dogru else '✗'}")
+    print(f"  Sonuç: {sonuc}")
+
+    # TEST 3: 25x20 arsa, ön bahçe 5m, yan/arka 3m
+    # Arsa: alt(ön)=5m, sağ(yan)=3, üst(arka)=3, sol(yan)=3
+    # Beklenen: 19 geniş, 12 derin (sol-sağ: 25-3-3=19, alt-üst: 20-5-3=12)
+    # Köşeler: (3,5), (22,5), (22,17), (3,17)
+    sonuc = gu.poligon_offset_kenar_bazli(
+        [(0,0),(25,0),(25,20),(0,20)],
+        [5, 3, 3, 3]
+    )
+    beklenen = [(3,5),(22,5),(22,17),(3,17)]
+    tum_dogru = all(
+        abs(sonuc[i][0]-beklenen[i][0])<0.01 and abs(sonuc[i][1]-beklenen[i][1])<0.01
+        for i in range(4)
+    )
+    print(f"Test 3 - Gerçek arsa (ön:5, yan:3, arka:3): {'✓' if tum_dogru else '✗'}")
+    print(f"  Sonuç: {sonuc}")
+    alan = gu.poligon_alani(sonuc)
+    print(f"  Alan: {alan:.2f} m² (beklenen: 228)")
+
+    # TEST 4: CW poligon (ters sıra) aynı sonuç vermeli
+    # Kare ters sıra ile: [(0,0),(0,10),(10,10),(10,0)]
+    sonuc = gu.poligon_offset_kenar_bazli(
+        [(0,0),(0,10),(10,10),(10,0)],
+        [2, 2, 2, 2]
+    )
+    alan = gu.poligon_alani(sonuc)
+    print(f"Test 4 - CW poligon 2m içeri: Alan={alan:.2f} (beklenen: 36) {'✓' if abs(alan-36)<0.1 else '✗'}")
+
+    # TEST 5: Uzunluk eşitsizliği
+    try:
+        gu.poligon_offset_kenar_bazli([(0,0),(10,0),(10,10),(0,10)], [2, 2, 2])
+        print("Test 5 - 3 mesafe vermek: ✗ (hata fırlatmadı)")
+    except ValueError:
+        print("Test 5 - 3 mesafe → ValueError ✓")
+
+    # TEST 6: Üçgen arsa, her kenara farklı mesafe
+    sonuc = gu.poligon_offset_kenar_bazli(
+        [(0,0),(20,0),(10,15)],
+        [2, 2, 2]
+    )
+    alan_orj = gu.poligon_alani([(0,0),(20,0),(10,15)])
+    alan_yeni = gu.poligon_alani(sonuc)
+    print(f"Test 6 - Üçgen 2m içeri: Orijinal alan={alan_orj:.2f}, Yeni alan={alan_yeni:.2f} {'✓' if alan_yeni < alan_orj else '✗'}")
+    print(f"  Sonuç köşeleri: {sonuc}")
+
+    print("="*50)
+    print("Kenar bazlı offset testleri tamamlandı.")
+
+
 if __name__ == "__main__":
     test_geometri()
+    test_kenar_bazli_offset()

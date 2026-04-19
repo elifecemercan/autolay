@@ -353,3 +353,196 @@ class GeometryUtils:
             pass  # Doğrulama isteğe bağlı; hata fırlatma
 
         return yeni_koseler
+
+    # -----------------------------------------------------------------------
+    # METOT 6: Kenar Bazlı Poligon Offset (Her Kenara Ayrı Mesafe)
+    # -----------------------------------------------------------------------
+
+    def poligon_offset_kenar_bazli(self, koseler: list, mesafeler: list) -> list:
+        """
+        Her kenara farklı çekme mesafesi uygulayarak poligonu kaydırır.
+
+        ``poligon_offset`` tüm kenarlara tek bir mesafe uygularken bu metot
+        her kenara bağımsız mesafe tanımlanmasına olanak verir; böylece
+        farklı komşu parsellere veya yol cephelerine göre değişen
+        çekme mesafeleri doğrudan modellenilebilir.
+
+        Algoritma özeti:
+            1. Köşe sayısı < 3 ise YetersizKoseHatasi fırlatılır.
+            2. len(mesafeler) != len(koseler) ise ValueError fırlatılır.
+            3. İmzalı alan ile yön (CW/CCW) belirlenir. CW ise mesafelerin
+               işareti ters çevrilerek CCW mantığıyla çalışmaya devam edilir.
+            4. Her kenar için birim normal hesaplanır ve kenar o kenara ait
+               mesafe kadar dik yönde kaydırılır (yeni başlangıç ve bitiş).
+            5. Her köşe için o köşeye gelen iki kaydırılmış kenarın kesişimi
+               parametrik doğru denklem sistemi çözülerek bulunur.
+            6. İki kenar paralelse (det ≈ 0) log.warning verilir ve orijinal
+               köşe korunur.
+
+        Parametreler:
+            koseler   (list): Poligon köşeleri [(x1,y1), (x2,y2), ...].
+                              En az 3 köşe olmalıdır. CW veya CCW sıra kabul
+                              edilir; yön otomatik tespit edilir.
+            mesafeler (list): Her kenara ait çekme mesafesi.
+                              len(mesafeler) == len(koseler) olmalıdır.
+                              mesafeler[i] → koseler[i]..koseler[i+1] kenarı.
+                              Pozitif değer → CCW poligonda içeriye çekme.
+                              Negatif değer → CCW poligonda dışarıya şişirme.
+
+        Dönüş değeri:
+            list — Yeni köşe koordinatları [(x,y), ...], orijinalle aynı
+                   uzunlukta ve aynı köşe sıralamasında.
+
+        Hatalar:
+            YetersizKoseHatasi — 3'ten az köşe verilirse.
+            ValueError          — mesafeler listesi koseler ile aynı uzunlukta
+                                  değilse.
+
+        Örnek:
+            koseler   = [(0,0),(12,0),(12,10),(0,10)]
+            mesafeler = [3, 2, 3, 2]   # alt/sağ/üst/sol çekme
+            gu.poligon_offset_kenar_bazli(koseler, mesafeler)
+            → [(2,3),(10,3),(10,7),(2,7)]
+        """
+
+        # --- Adım 1: Köşe sayısı kontrolü ---
+        if len(koseler) < MIN_POLIGON_KOSE_SAYISI:
+            raise YetersizKoseHatasi(len(koseler))
+
+        # --- Adım 2: Mesafe listesi uzunluk kontrolü ---
+        if len(mesafeler) != len(koseler):
+            raise ValueError(
+                f"mesafeler uzunluğu ({len(mesafeler)}) koseler uzunluğuyla "
+                f"({len(koseler)}) eşleşmeli."
+            )
+
+        n = len(koseler)
+
+        # --- Adım 3: Poligon yönünü imzalı alan ile tespit et ---
+        # Shoelace toplamının işareti: pozitif → CCW, negatif → CW.
+        # CCW poligonda "sola dik normal" içeriye bakar; bu metottaki
+        # tüm normal hesaplamaları CCW varsayımıyla yapılır.
+        # CW poligon gelirse mesafelerin tamamını -1 ile çarparak
+        # CCW eşdeğerine dönüştürülür.
+        imzali_alan = sum(
+            koseler[i][0] * koseler[(i + 1) % n][1] -
+            koseler[(i + 1) % n][0] * koseler[i][1]
+            for i in range(n)
+        ) / 2.0
+
+        if imzali_alan < 0:
+            # CW poligon tespit edildi — mesafe işaretlerini ters çevir
+            self.log.debug(
+                "poligon_offset_kenar_bazli: CW poligon — "
+                "tüm mesafeler -1 ile çarpılıyor."
+            )
+            mesafeler = [-m for m in mesafeler]
+        else:
+            self.log.debug("poligon_offset_kenar_bazli: CCW poligon.")
+
+        # --- Adım 4: Her kenarı mesafesi kadar dik yönde kaydır ---
+        # Her kenar için kaydırılmış başlangıç (P) ve bitiş (Q) noktaları
+        # ile kenar yön vektörü (d) saklanır. Bunlar Adım 5'te kullanılır.
+
+        kaydirilmis_kenarlar = []  # Her eleman: (P, d_birim_vektor)
+
+        for i in range(n):
+            # Kenar başlangıç ve bitiş noktaları
+            xi, yi = koseler[i]
+            xj, yj = koseler[(i + 1) % n]
+
+            # Kenar vektörü
+            dx = xj - xi
+            dy = yj - yi
+            uzunluk = math.sqrt(dx * dx + dy * dy)
+
+            if uzunluk < 1e-10:
+                # Sıfır uzunluklu kenar — kaydırma yapılamaz, orijinal konumda tut
+                self.log.warning(
+                    f"Kenar {i}: sıfır uzunluk (köşe {i} ve {(i + 1) % n} "
+                    "çakışıyor). Bu kenar kaydırılmadan bırakıldı."
+                )
+                # Yön vektörü olarak (1, 0) kullan; normal (0, 0) kalır
+                kaydirilmis_kenarlar.append(((xi, yi), (1.0, 0.0)))
+                continue
+
+            # Birim yön vektörü
+            dx_birim = dx / uzunluk
+            dy_birim = dy / uzunluk
+
+            # CCW poligonda sola dik birim normal: (-dy/len, dx/len)
+            # Bu normal, pozitif mesafede kenarı içeriye iter.
+            nx = -dy_birim   # normal x bileşeni
+            ny =  dx_birim   # normal y bileşeni
+
+            # Bu kenara ait çekme mesafesi
+            m = mesafeler[i]
+
+            # Kaydırılmış kenarın başlangıç noktası
+            P = (xi + nx * m, yi + ny * m)
+
+            # Kaydırılmış kenarın birim yön vektörü (kenar doğrultusu değişmez)
+            d = (dx_birim, dy_birim)
+
+            kaydirilmis_kenarlar.append((P, d))
+
+        # --- Adım 5: Komşu kaydırılmış kenarların kesişimlerini bul ---
+        # Köşe i, kenar (i-1) ile kenar (i)'nin kesişim noktasıdır.
+        # Parametrik gösterim:
+        #   Kenar A: A_P + t * A_d
+        #   Kenar B: B_P + s * B_d
+        # Kesişim: A_P + t * A_d = B_P + s * B_d
+        # Düzenlenirse 2×2 doğrusal sistem:
+        #   A_dx * t - B_dx * s = B_Px - A_Px
+        #   A_dy * t - B_dy * s = B_Py - A_Py
+        # Cramer kuralıyla çözülür.
+
+        yeni_koseler = []
+
+        for i in range(n):
+            # Köşe i öncesi kenar (i-1 → i): kenar indeksi (i-1) % n
+            A_P, A_d = kaydirilmis_kenarlar[(i - 1) % n]
+            # Köşe i sonrası kenar (i → i+1): kenar indeksi i
+            B_P, B_d = kaydirilmis_kenarlar[i]
+
+            A_dx, A_dy = A_d
+            B_dx, B_dy = B_d
+
+            # Katsayı matrisinin determinantı (Cramer):
+            # | A_dx  -B_dx | → det = A_dx * (-B_dy) - (-B_dx) * A_dy
+            #   A_dy  -B_dy |      = -A_dx * B_dy + B_dx * A_dy
+            det = A_dx * (-B_dy) - (-B_dx) * A_dy
+            # Basitleştirilmiş: det = B_dx * A_dy - A_dx * B_dy
+
+            if abs(det) < 1e-10:
+                # İki kenar paralel (veya çakışık) — kesişim yok
+                self.log.warning(
+                    f"Köşe {i}: kenar {(i - 1) % n} ve kenar {i} paralel "
+                    "(det ≈ 0). Köşe orijinal konumda korunuyor."
+                )
+                yeni_koseler.append(koseler[i])
+                continue
+
+            # Sağ taraf vektörü: (B_Px - A_Px, B_Py - A_Py)
+            rhs_x = B_P[0] - A_P[0]
+            rhs_y = B_P[1] - A_P[1]
+
+            # Cramer ile t parametresini çöz (sadece t gerekli):
+            # t = det_t / det
+            # det_t: sağ taraf vektörünü ikinci sütunla değiştir
+            # | rhs_x  -B_dx | → det_t = rhs_x * (-B_dy) - (-B_dx) * rhs_y
+            #   rhs_y  -B_dy |         = -rhs_x * B_dy + B_dx * rhs_y
+            det_t = (-rhs_x * B_dy) + (B_dx * rhs_y)
+            t = det_t / det
+
+            # Kesişim noktasını Kenar A üzerinde hesapla
+            kesisim_x = A_P[0] + t * A_dx
+            kesisim_y = A_P[1] + t * A_dy
+
+            yeni_koseler.append((kesisim_x, kesisim_y))
+
+        # --- Adım 6: Sonuç listesini döndür ---
+        self.log.debug(
+            f"poligon_offset_kenar_bazli tamamlandı: {n} köşe işlendi."
+        )
+        return yeni_koseler
