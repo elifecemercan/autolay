@@ -22,6 +22,8 @@ _GECERLI_NIZAMLAR = {"ayrik", "bitisik", "blok"}
 # Planlı Alanlar İmar Yönetmeliği Madde 23 — plan notu yoksa uygulanır
 _VARSAYILAN_IMAR_DURUMU = {"on": 5.0, "yan": 3.0, "arka": 3.0}
 
+_VARSAYILAN_EMSAL_HARICI_ORANI = 0.30  # Planlı Alanlar İmar Yönetmeliği Madde 22
+
 
 class MimariVeriler:
     """
@@ -47,6 +49,9 @@ class MimariVeriler:
         bitisik_kenarlar: list = None,
         imar_durumu: dict = None,
         bina_yuksekligi_m: float = None,
+        taks: float = None,
+        kaks: float = None,
+        emsal_harici_orani: float = None,
     ):
         """
         MimariVeriler nesnesini başlatır ve doğrular.
@@ -74,6 +79,14 @@ class MimariVeriler:
             bina_yuksekligi_m (float|None): Binanın toplam yüksekliği (metre).
                                             60.50m kontrolü için kullanılır.
                                             Henüz bilinmiyorsa None bırakılır.
+            taks (float|None)             : Taban Alanı Katsayısı (0-1 arası).
+                                            İmar hesabı için gerekli. None ise
+                                            ImarHesap kullanılamaz.
+            kaks (float|None)             : Kat Alanı Katsayısı / Emsal.
+                                            İmar hesabı için gerekli.
+            emsal_harici_orani (float)    : Emsal harici alanların toplam emsal
+                                            içi alana oranı üst limiti.
+                                            Varsayılan: 0.30 (Madde 22).
 
         Hata:
             YetersizKoseHatasi : arsa_koseleri 3'ten az köşe içeriyorsa.
@@ -91,6 +104,9 @@ class MimariVeriler:
         self.park_komsusu_kenarlar = park_komsusu_kenarlar if park_komsusu_kenarlar is not None else []
         self.bitisik_kenarlar = bitisik_kenarlar if bitisik_kenarlar is not None else []
         self.bina_yuksekligi_m = bina_yuksekligi_m
+        self.taks = taks
+        self.kaks = kaks
+        self.emsal_harici_orani = emsal_harici_orani if emsal_harici_orani is not None else _VARSAYILAN_EMSAL_HARICI_ORANI
 
         # imar_durumu: eksik anahtarları varsayılanla tamamla
         if imar_durumu is None:
@@ -178,6 +194,27 @@ class MimariVeriler:
                     f"imar_durumu['{anahtar}'] pozitif olmalı, "
                     f"verildi: {self.imar_durumu[anahtar]}."
                 )
+
+        # 9. taks kontrolü (None değilse)
+        if self.taks is not None:
+            if self.taks <= 0 or self.taks > 1:
+                raise ValueError(
+                    f"taks 0 ile 1 arasında olmalı, verildi: {self.taks}."
+                )
+
+        # 10. kaks kontrolü (None değilse)
+        if self.kaks is not None:
+            if self.kaks <= 0:
+                raise ValueError(
+                    f"kaks pozitif olmalı, verildi: {self.kaks}."
+                )
+
+        # 11. emsal_harici_orani kontrolü
+        if self.emsal_harici_orani < 0 or self.emsal_harici_orani > 1:
+            raise ValueError(
+                f"emsal_harici_orani 0 ile 1 arasında olmalı, "
+                f"verildi: {self.emsal_harici_orani}."
+            )
 
         self.log.info(
             f"MimariVeriler oluşturuldu: {n} köşe, "
@@ -267,4 +304,13 @@ class MimariVeriler:
                 f"arka={self.imar_durumu['arka']}m"
             ),
         ]
+        satirlar.append(
+            f"TAKS             : {self.taks if self.taks is not None else '(belirtilmedi)'}"
+        )
+        satirlar.append(
+            f"KAKS             : {self.kaks if self.kaks is not None else '(belirtilmedi)'}"
+        )
+        satirlar.append(
+            f"Emsal harici %   : {self.emsal_harici_orani * 100:.0f}%"
+        )
         return "\n".join(satirlar)
