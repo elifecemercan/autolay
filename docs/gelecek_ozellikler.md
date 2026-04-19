@@ -83,6 +83,16 @@ Her özellik versiyonuna göre gruplandırılmıştır.
 - [ ] PDF vektör dönüşümü
 - [ ] Bilgisayarlı görü (etiketsiz çizim okuma)
 
+## v1.5+ - AI Entegrasyonu (Opsiyonel)
+
+- [ ] Claude/OpenAI API entegrasyonu
+- [ ] AI tefriş önerileri (3 seçenek üretimi)
+- [ ] AI tasarım kontrolü ("yanlış ne?" sorusu)
+- [ ] AI proje özeti yazımı
+- [ ] AI doğal dil soru-cevap
+- [ ] Kullanıcı API anahtarı yönetimi
+- [ ] AI maliyet gösterimi
+
 ## v2.0+ - Dallanma
 
 - [ ] Elektrik iç tesisat modülü (autolay/elektrik/)
