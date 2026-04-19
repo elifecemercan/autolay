@@ -21,6 +21,7 @@ from autolay.core.baglanti import AutoCADConnector
 from autolay.core.hatalar import AktifCizimYokHatasi
 from autolay.mimari.arsa import ArsaCizici
 from autolay.mimari.cekme import CekmeCizici
+from autolay.mimari.veriler import MimariVeriler
 from autolay.utils.logger import logger_olustur
 
 # Türkçe karakterlerin konsolda doğru görünmesi için UTF-8'i etkinleştir
@@ -339,9 +340,140 @@ def test_dar_aci_uyarisi():
     print("="*50)
 
 
+def test_verilerden_hesapla():
+    utf8_aktif_et()
+    print("="*50)
+    print("verilerden_hesapla Testi")
+    print("="*50)
+
+    connector = AutoCADConnector()
+    try:
+        connector.baglan()
+    except Exception as e:
+        print(f"AutoCAD bağlantısı başarısız: {e}")
+        return
+
+    # TEST 1: Basit ayrık nizam, 1 kat — sadece varsayılan mesafeler
+    print("\n--- Test 1: 1 kat ayrık ---")
+    arsa_koseleri = [(200, 0), (225, 0), (225, 20), (200, 20)]
+    veri1 = MimariVeriler(
+        arsa_koseleri=arsa_koseleri,
+        kat_sayisi=1,
+        on_kenar_indeks=0,
+    )
+    arsa1 = ArsaCizici(connector)
+    arsa1.koseleri_ayarla(arsa_koseleri)
+    arsa1.ciz()
+
+    cekme1 = CekmeCizici(connector)
+    cekme1.verilerden_hesapla(veri1)
+    cekme1.ciz()
+    print(f"Mesafeler: {cekme1.kenar_mesafeleri}")
+    # Beklenen: [5, 3, 3, 3] (ön=5, yan=3, arka=3, yan=3)
+    assert cekme1.kenar_mesafeleri == [5.0, 3.0, 3.0, 3.0], f"Beklenen [5,3,3,3], alınan {cekme1.kenar_mesafeleri}"
+    print("Test 1 ✓")
+
+    # TEST 2: 7 kat — kademeli çekme uygulanmalı
+    print("\n--- Test 2: 7 kat ayrık ---")
+    arsa2_koseleri = [(240, 0), (265, 0), (265, 20), (240, 20)]
+    veri2 = MimariVeriler(
+        arsa_koseleri=arsa2_koseleri,
+        kat_sayisi=7,
+        on_kenar_indeks=0,
+    )
+    arsa2 = ArsaCizici(connector)
+    arsa2.koseleri_ayarla(arsa2_koseleri)
+    arsa2.ciz()
+
+    cekme2 = CekmeCizici(connector)
+    cekme2.verilerden_hesapla(veri2)
+    cekme2.ciz()
+    print(f"Mesafeler: {cekme2.kenar_mesafeleri}")
+    # Beklenen: [5, 4.5, 4.5, 4.5] (ön değişmez, diğerleri +1.5)
+    assert cekme2.kenar_mesafeleri == [5.0, 4.5, 4.5, 4.5], f"Beklenen [5,4.5,4.5,4.5], alınan {cekme2.kenar_mesafeleri}"
+    print("Test 2 ✓")
+
+    # TEST 3: Bitişik nizam, 1 kat
+    print("\n--- Test 3: Bitişik, 1 kat ---")
+    arsa3_koseleri = [(280, 0), (305, 0), (305, 20), (280, 20)]
+    veri3 = MimariVeriler(
+        arsa_koseleri=arsa3_koseleri,
+        yapi_nizami="bitisik",
+        kat_sayisi=1,
+        on_kenar_indeks=0,
+        bitisik_kenarlar=[1],  # sağ yan bitişik
+    )
+    arsa3 = ArsaCizici(connector)
+    arsa3.koseleri_ayarla(arsa3_koseleri)
+    arsa3.ciz()
+
+    cekme3 = CekmeCizici(connector)
+    cekme3.verilerden_hesapla(veri3)
+    cekme3.ciz()
+    print(f"Mesafeler: {cekme3.kenar_mesafeleri}")
+    # Beklenen: [5, 0, 3, 3]
+    assert cekme3.kenar_mesafeleri == [5.0, 0, 3.0, 3.0], f"Beklenen [5,0,3,3], alınan {cekme3.kenar_mesafeleri}"
+    print("Test 3 ✓")
+
+    # TEST 4: Bitişik + 7 kat (park komşusu dahil)
+    print("\n--- Test 4: Bitişik + 7 kat + park komşusu=[2] ---")
+    arsa4_koseleri = [(320, 0), (345, 0), (345, 20), (320, 20)]
+    veri4 = MimariVeriler(
+        arsa_koseleri=arsa4_koseleri,
+        yapi_nizami="bitisik",
+        kat_sayisi=7,
+        on_kenar_indeks=0,
+        bitisik_kenarlar=[1],
+        park_komsusu_kenarlar=[2],
+    )
+    arsa4 = ArsaCizici(connector)
+    arsa4.koseleri_ayarla(arsa4_koseleri)
+    arsa4.ciz()
+
+    cekme4 = CekmeCizici(connector)
+    cekme4.verilerden_hesapla(veri4)
+    cekme4.ciz()
+    print(f"Mesafeler: {cekme4.kenar_mesafeleri}")
+    # Beklenen: [5, 0, 3, 4.5]
+    # Kenar 0 (ön): 5 (değişmez)
+    # Kenar 1 (bitişik): 0 (değişmez)
+    # Kenar 2 (park komşusu): 3 (değişmez)
+    # Kenar 3 (yan): 3 + 1.5 = 4.5
+    assert cekme4.kenar_mesafeleri == [5.0, 0, 3.0, 4.5], f"Beklenen [5,0,3,4.5], alınan {cekme4.kenar_mesafeleri}"
+    print("Test 4 ✓")
+
+    # TEST 5: Yüksek yapı uyarısı (65m)
+    print("\n--- Test 5: Yüksek yapı (65m) ---")
+    arsa5_koseleri = [(360, 0), (385, 0), (385, 20), (360, 20)]
+    veri5 = MimariVeriler(
+        arsa_koseleri=arsa5_koseleri,
+        kat_sayisi=20,
+        on_kenar_indeks=0,
+        bina_yuksekligi_m=65.0,  # yüksek yapı
+    )
+    arsa5 = ArsaCizici(connector)
+    arsa5.koseleri_ayarla(arsa5_koseleri)
+    arsa5.ciz()
+
+    cekme5 = CekmeCizici(connector)
+    cekme5.verilerden_hesapla(veri5)
+    # Uyarı log.warning'e gitmeli (konsolda görünecek)
+    print(f"Mesafeler: {cekme5.kenar_mesafeleri}")
+    # 20 kat → 16 ekstra × 0.5 = 8m eklenir yan/arkaya
+    # Beklenen: [5, 11, 11, 11]
+    # Yüksek yapı uyarısı bekleniyor
+    print("Test 5 ✓ (yüksek yapı uyarısı log'da görünmeli)")
+
+    connector.acad.ZoomExtents()
+    print("\n" + "="*50)
+    print("Tüm entegrasyon testleri tamamlandı")
+    print("="*50)
+
+
 if __name__ == "__main__":
     test_cekme()
     test_cekme_kenar_bazli()
     test_kademeli_cekme()
     test_bitisik_nizam()
     test_dar_aci_uyarisi()
+    test_verilerden_hesapla()

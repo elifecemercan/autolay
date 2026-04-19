@@ -12,6 +12,7 @@ Bağımlılıklar:
 """
 
 from autolay.core.baglanti import AutoCADConnector
+from autolay.mimari.veriler import MimariVeriler
 from autolay.drawing.shapes import GeometryDrawer
 from autolay.drawing.layers import LayerManager
 from autolay.utils.geometri import GeometryUtils
@@ -138,6 +139,70 @@ class CekmeCizici:
             )
         self.kenar_mesafeleri = mesafeler
         self.log.info(f"Tüm kenar mesafeleri ayarlandı: {mesafeler}")
+
+    def verilerden_hesapla(self, veri: MimariVeriler):
+        """
+        MimariVeriler nesnesinden tüm konfigürasyonu otomatik okuyup uygular.
+
+        Bu metot aşağıdakileri sırasıyla yapar:
+        1. Arsa köşelerini veri'den alır
+        2. Yapı nizamına göre başlangıç çekme mesafelerini ayarlar:
+           - "bitisik" nizam ve bitisik_kenarlar varsa → bitisik_nizam_ayarla çağrılır
+           - Diğer durumda → veri.cekme_baslangic_mesafeleri() kullanılır
+        3. Kat sayısı > 4 ise kademeli çekme uygulanır
+        4. Bina yüksekliği varsa yüksek yapı uyarısı verilir (60.50m+)
+
+        Parametreler:
+            veri (MimariVeriler): Tüm proje verilerini içeren nesne.
+
+        Not: Bu metot ciz() çağırmaz. Sadece iç durumu hazırlar.
+        Kullanıcı hazırlık sonrası ciz() çağırmalıdır.
+        """
+
+        # Adım 1: Arsa köşelerini ayarla
+        self.arsa_koseleri_ayarla(veri.arsa_koseleri)
+
+        # Adım 2: Yapı nizamına göre başlangıç mesafeleri
+        if veri.yapi_nizami == "bitisik" and len(veri.bitisik_kenarlar) > 0:
+            # Bitişik nizam: bitisik_nizam_ayarla kullan
+            # diger_mesafeler için cekme_baslangic_mesafeleri'nden bitişik olmayanları al
+            baslangic = veri.cekme_baslangic_mesafeleri()
+            diger_mesafeler = {
+                i: baslangic[i]
+                for i in range(len(baslangic))
+                if i not in veri.bitisik_kenarlar
+            }
+            self.bitisik_nizam_ayarla(
+                bitisik_kenarlar=veri.bitisik_kenarlar,
+                diger_mesafeler=diger_mesafeler
+            )
+        else:
+            # Ayrık nizam (veya bitişik ama bitişik kenar yok — hata)
+            baslangic = veri.cekme_baslangic_mesafeleri()
+            self.tum_kenarlar_ayarla(baslangic)
+
+        # Adım 3: Kademeli çekme (4 kat üstü)
+        if veri.kat_sayisi > 4:
+            self.kademeli_cekme_hesapla(
+                kat_sayisi=veri.kat_sayisi,
+                on_kenar_indeks=veri.on_kenar_indeks,
+                park_komsusu_kenarlar=veri.park_komsusu_kenarlar,
+                bitisik_kenarlar=veri.bitisik_kenarlar,
+            )
+
+        # Adım 4: Yüksek yapı uyarısı (60.50m+)
+        if veri.bina_yuksekligi_m is not None and veri.bina_yuksekligi_m >= 60.50:
+            self.log.warning(
+                f"⚠ Bina yüksekliği {veri.bina_yuksekligi_m}m ≥ 60.50m. "
+                f"Yönetmelik gereği tüm kenarlar minimum 15m çekilmelidir. "
+                f"Mevcut mesafeler: {self.kenar_mesafeleri}. "
+                f"Gerekirse manuel düzenleyin."
+            )
+
+        self.log.info(
+            f"verilerden_hesapla tamamlandı. "
+            f"Mesafeler: {self.kenar_mesafeleri}"
+        )
 
     def bitisik_nizam_ayarla(self, bitisik_kenarlar: list, diger_mesafeler: dict):
         """
@@ -350,7 +415,8 @@ class CekmeCizici:
         self,
         kat_sayisi: int,
         on_kenar_indeks: int,
-        park_komsusu_kenarlar: list = None
+        park_komsusu_kenarlar: list = None,
+        bitisik_kenarlar: list = None
     ):
         """
         Kat sayısına göre kademeli çekme mesafesi hesaplar ve günceller.
@@ -358,6 +424,7 @@ class CekmeCizici:
         Kural: 4 kattan fazla her kat için yan/arka kenarlara +0.50m eklenir.
         Park komşusuna bakan kenarlara EKLENMEZ.
         Ön kenara EKLENMEZ (sadece yan/arka).
+        Bitişik kenarlara EKLENMEZ (0 kalır).
 
         Parametreler:
             kat_sayisi (int)             : Binanın toplam kat sayısı.
@@ -366,6 +433,9 @@ class CekmeCizici:
             park_komsusu_kenarlar (list) : Park komşusu olan kenar indeksleri;
                                            bu kenarlara da ekleme yapılmaz.
                                            None ise boş liste kabul edilir.
+            bitisik_kenarlar (list)      : Komşuya yapışık kenarların indeksleri.
+                                           Bu kenarlara kademeli ekleme yapılmaz
+                                           (0 kalır). None ise boş liste kabul edilir.
 
         Hata:
             ValueError: arsa_koseleri henüz ayarlanmamışsa.
@@ -394,9 +464,11 @@ class CekmeCizici:
                 f"Geçerli aralık: 0–{n - 1}."
             )
 
-        # --- Adım 2: park_komsusu_kenarlar None ise boş liste yap ---
+        # --- Adım 2: None parametreleri boş listeye dönüştür ---
         if park_komsusu_kenarlar is None:
             park_komsusu_kenarlar = []
+        if bitisik_kenarlar is None:
+            bitisik_kenarlar = []
 
         # --- Adım 3: 4 veya daha az katta kademeli artış gerekmez ---
         if kat_sayisi <= 4:
@@ -424,6 +496,10 @@ class CekmeCizici:
             # Park komşusu kenar ise atla
             if i in park_komsusu_kenarlar:
                 self.log.info(f"  Kenar {i}: park komşusu — atlandı.")
+                continue
+            # Bitişik kenar ise atla
+            if i in bitisik_kenarlar:
+                self.log.info(f"  Kenar {i}: bitişik kenar — atlandı (0 kalır).")
                 continue
             # Yan veya arka kenar: ekleme uygula
             self.kenar_mesafeleri[i] += ekleme
