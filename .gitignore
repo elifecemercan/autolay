@@ -1,0 +1,19 @@
+# Sanal ortam
+venv/
+
+# Python önbellek
+__pycache__/
+*.pyc
+
+# Log dosyaları
+logs/
+*.log
+
+# VS Code ayarları
+.vscode/
+
+# Claude Code dosyaları
+.claude/
+
+# Yedek dosyalar
+*.bak
