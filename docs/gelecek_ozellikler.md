@@ -93,6 +93,10 @@ Her özellik versiyonuna göre gruplandırılmıştır.
 - [ ] Kullanıcı API anahtarı yönetimi
 - [ ] AI maliyet gösterimi
 
+---
+> **Not:** Araştırma dosyaları kullanıcı tarafından doldurulup imarhesap ve cekmecizici v0.2'ye entegre edilecek.
+> Bkz: `docs/arastirma/cekme_mesafeleri.md`, `docs/arastirma/taks_kaks.md`
+
 ## v2.0+ - Dallanma
 
 - [ ] Elektrik iç tesisat modülü (autolay/elektrik/)
